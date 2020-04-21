@@ -203,6 +203,19 @@ const scaleRadial = (
 };
 
 /**
+ * Generate a circular svg path
+ *
+ * @param r radius of the circle
+ * @param cx (optional) center x position of circle. (default: 0)
+ * @param cy (optional) center y position of circle. (default: 0)
+ * @returns a svg path describing a circle
+ */
+const circlePath = (r: number, cx: number = 0, cy: number = 0) =>
+  `M ${cx} ${cy} m -${r}, 0 a ${r},${r} 0 1,1 ${r * 2},0 a ${r},${r} 0 1,1 -${
+    r * 2
+  },0`;
+
+/**
  * Draw the the radial bar chart as a d3 svg in jsdom and returns a rendered binary PNG.
  *
  * @param cases total cases accumulative
@@ -217,8 +230,8 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
   const jsdom = new JSDOM("<html><body><svg></svg></body></html>");
   const document = jsdom.window.document;
 
-  const margin = { top: 50, right: 50, bottom: 30, left: 50 };
-  const width = 3960 - margin.left - margin.right,
+  const margin = { top: 120, right: 120, bottom: 120, left: 120 };
+  const width = 1980 - margin.left - margin.right,
     height = 1980 - margin.top - margin.bottom;
 
   const svg = d3
@@ -239,7 +252,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
   const innerRadius = 350,
     outerRadius = Math.min(width, height) / 2 - 6;
 
-  const formatDate = d3.timeFormat("%b %d");
+  const formatDate = d3.timeFormat("%d.%m");
 
   const fullCircle = 2 * Math.PI;
 
@@ -313,61 +326,105 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
   const labels = yTick
     .append("text")
     .attr("y", (d) => -y(d))
-    .attr("dy", "-0.1em")
+    .attr("dy", (_, i) => (i === 0 ? "-0.725em" : "-0.1em"))
     .attr("fill", "white")
     .attr("stroke", "none")
     .attr("transform", "translate(6)")
     .attr("text-anchor", "start")
     .style("font-size", "36px")
     .style("font-family", "sans-serif")
-    .text((d) => d.toString());
+    .text((d) => (d === 0 ? "0" : Math.round(d / 1000) + "k"));
+
+  const scaleFont = d3.scaleLinear().range([14, 36]).domain(y.domain());
+  const scaleFontDy = d3.scaleLinear().range([6, 12]).domain(y.domain());
+  const dates = g
+    .append("g")
+    .attr("class", "dates")
+    .selectAll("dateTicks")
+    .data(cases)
+    .enter()
+    .append("text")
+    .attr("class", "dataTicks")
+    .attr("text-anchor", "middle")
+    .attr("fill", "white")
+    .attr("stroke", "none")
+    .style("font-size", ([, cases]) => scaleFont(cases) + "px")
+    .style("font-family", "sans-serif")
+    .text(([date]) => formatDate(date))
+    .attr("y", ([, cases]) => -y(cases))
+    .attr("dy", ([, cases]) => -scaleFontDy(cases) + "px")
+    .attr("transform", (_, i) => `rotate(${(i + 0.5) * (360 / numBars)})`);
+
+  const legend = g.append("g").attr("class", "legend");
+  const square = 32;
+  const squareXPad = 0.667 * square;
+  const textX = -147;
+  const fontSize = square * 1.75;
+  const textYPad = 0.334 * fontSize;
+  const legends = timelines.map(([_, color], idx) => [
+    idx === 0 ? "Active Cases" : idx === 1 ? "Total Recovered" : "Total Deaths",
+    color,
+  ]);
+  const opticalYPad = 65;
+  const textY = -opticalYPad;
+  legend.attr("transform", `translate(0, -${(textYPad + fontSize) / 2})`);
+  legend
+    .selectAll(".legendSquare")
+    .data(legends)
+    .enter()
+    .append("rect")
+    .attr("class", "legendSquare")
+    .attr("x", textX - square - squareXPad)
+    .attr("y", (_, i) => textY + i * (fontSize + textYPad) - square)
+    .attr("width", square)
+    .attr("height", square)
+    .attr("fill", ([, color]) => color);
+  legend
+    .selectAll(".legendText")
+    .data(legends)
+    .enter()
+    .append("text")
+    .attr("class", "legendText")
+    .attr("text-anchor", "start")
+    .style("font-size", `${fontSize}px`)
+    .style("font-family", "sans-serif")
+    .attr("x", textX)
+    .attr("y", (_, i) => textY + i * (fontSize + textYPad))
+    .attr("fill", "white")
+    .attr("stroke", "none")
+    .text(([legend]) => legend);
 
   const tag = g
     .append("text")
-    .attr("x", width * 0.125)
-    .attr("y", height / 2)
-    .attr("dy", -30)
+    .attr("x", 0)
+    .attr("y", legends.length * (fontSize + textYPad))
+    .attr("dy", -20)
     .attr("fill", "white")
-    .attr("opacity", 0.75)
-    .style("font-size", "48px")
+    .attr("text-anchor", "middle")
+    .style("font-size", "45px")
     .style("font-family", "sans-serif")
     .style("font-style", "italic")
     .style("font-weight", "bold")
     .text("@chjdev");
 
-  // const xAxis = g.append("g");
-  //
-  // const numXTicks = numBars / 2;
-  // const xTick = xAxis
-  //   .selectAll("g")
-  //   .data(x.ticks(numXTicks))
-  //   .enter()
-  //   .append("g")
-  //   .attr("text-anchor", "middle")
-  //   .attr(
-  //     "transform",
-  //     (d, i) =>
-  //       "rotate(" +
-  //       // ((x(d) * 180) / Math.PI - 90) +
-  //       ((180 * (((i + 0.5) / numXTicks) * 2 * Math.PI)) / Math.PI - 90) +
-  //       ")translate(" +
-  //       innerRadius +
-  //       ",0)",
-  //   );
-  //
-  // xTick.append("line").attr("x2", -5).attr("stroke", "#000");
-  //
-  // xTick
-  //   .append("text")
-  //   .attr("transform", (d, i) => {
-  //     const angle = ((i + 0.5) / numXTicks) * 2 * Math.PI;
-  //     return angle < Math.PI / 2 || angle > (Math.PI * 3) / 2
-  //       ? "rotate(90)translate(0,22)"
-  //       : "rotate(-90)translate(0, -15)";
-  //   })
-  //   .text((d) => formatDate(d))
-  //   .style("font-size", 10)
-  //   .attr("opacity", 0.6);
+  const textPath = g
+    .append("path")
+    .attr("id", "circlePath") //Unique id of the path
+    .attr("d", circlePath(outerRadius + scaleFontDy.range()[1])) //SVG path
+    .style("fill", "none")
+    .style("stroke", "none");
+
+  g.append("text")
+    .append("textPath")
+    .attr("xlink:href", "#circlePath")
+    .style("text-anchor", "middle")
+    .attr("startOffset", "39%")
+    .attr("fill", "white")
+    .style("font-size", "32px")
+    .style("font-family", "sans-serif")
+    .text(
+      "https://github.com/chjdev/cotwit19\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0https://info.gesundheitsministerium.at/data/data.zip",
+    );
 
   return await convert(d3.select(document).select("body").html());
 };
