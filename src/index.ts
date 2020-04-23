@@ -1,6 +1,6 @@
 import fetch from "node-fetch";
 import yauzl, { Entry, ZipFile } from "yauzl";
-import { Buildable, DeepReadonly, Opaque, Writable } from "ts-essentials";
+import { Opaque, Writable } from "ts-essentials";
 import { JSDOM } from "jsdom";
 import * as d3 from "d3";
 import fs from "fs";
@@ -49,7 +49,7 @@ const toCSV = async (zipfile: ZipFile, entry: Entry): Promise<CSV> => {
         );
       });
       readStream.on("end", () => {
-        resolve((csvData as any) as CSV);
+        resolve(csvData as CSV);
       });
       readStream.on("error", (error) => {
         reject(error);
@@ -59,6 +59,7 @@ const toCSV = async (zipfile: ZipFile, entry: Entry): Promise<CSV> => {
 };
 
 type Timeline = [Date, number][];
+
 interface Data {
   readonly cases: Timeline;
   readonly recovered: Timeline;
@@ -103,45 +104,39 @@ const fetchData = async (): Promise<Data> => {
             toCSV(zipfile, entry).then((csv) => {
               return [
                 "cases",
-                csv
-                  .slice(1)
-                  .map(([date, value], idx, arr): [Date, number] => [
-                    parseTime(date) ?? new Date(0),
-                    arr
-                      .slice(0, idx + 1)
-                      .reduce((sum, [, value]) => sum + orZero(value), 0),
-                  ]),
+                csv.slice(1).reduce(
+                  ([timeline, sum], [date, value]): [Timeline, number] => {
+                    sum += orZero(value);
+                    timeline.push([parseTime(date) ?? new Date(0), sum]);
+                    return [timeline, sum];
+                  },
+                  [[], 0] as [Timeline, number],
+                )[0],
               ];
             }),
           );
-        } else if (entry.fileName.indexOf("GenesenTimeline") >= 0) {
-          result.push(
-            toCSV(zipfile, entry).then((csv) => {
-              return [
-                "recovered",
-                csv
-                  .slice(1)
-                  .map(([date, value]): [Date, number] => [
-                    parseTime(date) ?? new Date(0),
-                    orZero(value),
-                  ]),
-              ];
-            }),
-          );
-        } else if (entry.fileName.indexOf("TodesfaelleTimeline") >= 0) {
-          result.push(
-            toCSV(zipfile, entry).then((csv) => {
-              return [
-                "deaths",
-                csv
-                  .slice(1)
-                  .map(([date, value]): [Date, number] => [
-                    parseTime(date) ?? new Date(0),
-                    orZero(value),
-                  ]),
-              ];
-            }),
-          );
+        } else {
+          const key =
+            entry.fileName.indexOf("GenesenTimeline") >= 0
+              ? "recovered"
+              : entry.fileName.indexOf("TodesfaelleTimeline") >= 0
+              ? "deaths"
+              : null;
+          if (key != null) {
+            result.push(
+              toCSV(zipfile, entry).then((csv) => {
+                return [
+                  key,
+                  csv
+                    .slice(1)
+                    .map(([date, value]): [Date, number] => [
+                      parseTime(date) ?? new Date(0),
+                      orZero(value),
+                    ]),
+                ];
+              }),
+            );
+          }
         }
       });
       zipfile.on("end", async () => {
@@ -218,16 +213,14 @@ const circlePath = (r: number, cx: number = 0, cy: number = 0) =>
 /**
  * Draw the the radial bar chart as a d3 svg in jsdom and returns a rendered binary PNG.
  *
- * @param cases total cases accumulative
- * @param recovered total recovered accumulative
- * @param deaths total deaths accumulative
+ * @param data total cases, recovered, deaths accumulative
  */
 const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
   if (cases.length !== recovered.length || cases.length !== deaths.length) {
     console.log(cases, recovered, deaths);
     throw Error("lengths unequal");
   }
-  const jsdom = new JSDOM("<html><body><svg></svg></body></html>");
+  const jsdom = new JSDOM("<html lang='en'><body><svg></svg></body></html>");
   const document = jsdom.window.document;
 
   const margin = { top: 120, right: 120, bottom: 120, left: 120 };
@@ -282,7 +275,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
     [recovered, "rgb(29, 161, 242)"],
     [deaths, "rgb(121, 75, 196)"],
   ];
-  const arcs = timelines.map(([timeline, color], idx) => {
+  timelines.forEach(([timeline, color], idx) => {
     const offset = timelines
       .slice(0, idx)
       .reduce((sum: number[], [timeline]) => {
@@ -296,8 +289,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
       .outerRadius(([, value], idx) => y(value + offset[idx]))
       .startAngle((d, i) => (i * 2 * Math.PI) / numBars)
       .endAngle((d, i) => ((i + 1) * 2 * Math.PI) / numBars);
-    return g
-      .selectAll(".arc" + idx)
+    g.selectAll(".arc" + idx)
       .data(timeline)
       .enter()
       .append("path")
@@ -323,7 +315,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
     .attr("opacity", 0.2)
     .attr("r", () => y(y.domain()[0]));
 
-  const labels = yTick
+  yTick
     .append("text")
     .attr("y", (d) => -y(d))
     .attr("dy", (_, i) => (i === 0 ? "-0.725em" : "-0.1em"))
@@ -337,8 +329,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
 
   const scaleFont = d3.scaleLinear().range([14, 36]).domain(y.domain());
   const scaleFontDy = d3.scaleLinear().range([6, 12]).domain(y.domain());
-  const dates = g
-    .append("g")
+  g.append("g")
     .attr("class", "dates")
     .selectAll("dateTicks")
     .data(cases)
@@ -361,7 +352,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
   const textX = -147;
   const fontSize = square * 1.75;
   const textYPad = 0.334 * fontSize;
-  const legends = timelines.map(([_, color], idx) => [
+  const legends = timelines.map(([, color], idx) => [
     idx === 0 ? "Active Cases" : idx === 1 ? "Total Recovered" : "Total Deaths",
     color,
   ]);
@@ -394,8 +385,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
     .attr("stroke", "none")
     .text(([legend]) => legend);
 
-  const tag = g
-    .append("text")
+  g.append("text")
     .attr("x", 0)
     .attr("y", legends.length * (fontSize + textYPad))
     .attr("dy", -20)
@@ -407,8 +397,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
     .style("font-weight", "bold")
     .text("@chjdev");
 
-  const textPath = g
-    .append("path")
+  g.append("path")
     .attr("id", "circlePath") //Unique id of the path
     .attr("d", circlePath(outerRadius + scaleFontDy.range()[1])) //SVG path
     .style("fill", "none")
@@ -431,6 +420,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
 
 /**
  * Fetch data, render a png and write it to disk
+ *
  * @todo automatically post to twitter
  */
 const main = async () => {
