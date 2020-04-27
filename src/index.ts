@@ -6,6 +6,18 @@ import * as d3 from "d3";
 import fs from "fs";
 import { convert, PNG } from "convert-svg-to-png";
 
+/**
+ * Set the d3 locale to de-De for parsing and formatting
+ */
+const setLocale = async () => {
+  const locale = await (
+    await fetch(
+      "https://cdn.jsdelivr.net/npm/d3-time-format@2/locale/de-DE.json",
+    )
+  ).json();
+  d3.timeFormatDefaultLocale(locale);
+};
+
 const CSVURL = "https://info.gesundheitsministerium.at/data/data.zip";
 
 /**
@@ -87,6 +99,7 @@ const orZero = (value: number | string): number | 0 => {
 const fetchData = async (): Promise<Data> => {
   const csvzip = await fetch(CSVURL);
   const csvbuffer = await csvzip.buffer();
+  const parseTime = d3.timeParse("%d.%m.%Y");
   return new Promise((resolve, reject) => {
     const result: Promise<[keyof Data, Timeline]>[] = [];
     yauzl.fromBuffer(csvbuffer, { autoClose: false }, (err, zipfile) => {
@@ -97,7 +110,6 @@ const fetchData = async (): Promise<Data> => {
         return reject(new Error("NullError"));
       }
       zipfile.on("error", reject);
-      const parseTime = d3.timeParse("%d.%m.%Y");
       zipfile.on("entry", (entry) => {
         if (entry.fileName.indexOf("Epikurve") >= 0) {
           result.push(
@@ -145,10 +157,12 @@ const fetchData = async (): Promise<Data> => {
           const firstDate = Math.max(
             ...csvs.map(([, timeline]) => timeline[0][0].getTime()),
           );
-          const lastDate = Math.min(
-            ...csvs.map((timeline) =>
-              timeline[1][timeline[1].length - 1][0].getTime(),
-            ),
+          const lastDate: Date = csvs.reduce(
+            (date, [, timeline]) =>
+              timeline[timeline.length - 1][0] < date
+                ? timeline[timeline.length - 1][0]
+                : date,
+            new Date(), //works for this case
           );
           resolve(
             csvs.reduce((acc, [key, timeline]) => {
@@ -159,7 +173,7 @@ const fetchData = async (): Promise<Data> => {
               const reverseLastIndex = timeline
                 .slice(0)
                 .reverse()
-                .findIndex(([date]) => date.getTime() < lastDate);
+                .findIndex(([date]) => date <= lastDate);
               const lastIndex = timeline.length - 1 - reverseLastIndex;
               acc[key] = timeline.slice(firstIndex, lastIndex + 1);
               return acc;
@@ -327,7 +341,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
     .style("font-family", "sans-serif")
     .text((d) => (d === 0 ? "0" : Math.round(d / 1000) + "k"));
 
-  const scaleFont = d3.scaleLinear().range([14, 36]).domain(y.domain());
+  const scaleFont = d3.scaleLinear().range([14, 32]).domain(y.domain());
   const scaleFontDy = d3.scaleLinear().range([6, 12]).domain(y.domain());
   g.append("g")
     .attr("class", "dates")
@@ -424,6 +438,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
  * @todo automatically post to twitter
  */
 const main = async () => {
+  await setLocale();
   const data = await fetchData();
   const png = await draw(data);
   fs.writeFileSync("test.png", png);
