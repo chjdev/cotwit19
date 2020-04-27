@@ -23,5 +23,3 @@ export const getTwitterClient = (
   });
   /* eslint-enable @typescript-eslint/ban-ts-ignore */
 };
-
-console.log("wtf", process.env.CONSUMER_KEY);
