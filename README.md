@@ -3,3 +3,5 @@ Directly taps into the [zip](https://info.gesundheitsministerium.at/data/data.zi
 It then tweets this picture as a status update.
 
 If you'd like to run it provide your twitter OAuth credentials in `run.sh`.
+
+![example rendering](./example.png)
