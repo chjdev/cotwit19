@@ -5,6 +5,7 @@ import { JSDOM } from "jsdom";
 import * as d3 from "d3";
 import fs from "fs";
 import { convert, PNG } from "convert-svg-to-png";
+import { getTwitterClient } from "./twitter";
 
 /**
  * Set the d3 locale to de-De for parsing and formatting
@@ -433,15 +434,40 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
 };
 
 /**
- * Fetch data, render a png and write it to disk
+ * Tweet the PNG
  *
- * @todo automatically post to twitter
+ * @param media the png to tweet
+ * @returns the new tweet's id
+ */
+const tweet = async (media: PNG): Promise<string> => {
+  const mediaUploadResponse = await getTwitterClient("upload").post(
+    "media/upload",
+    {
+      /* eslint-disable @typescript-eslint/camelcase */
+      media_data: Buffer.from(media).toString("base64"),
+      /* eslint-enable @typescript-eslint/camelcase */
+    },
+  );
+  const tweetResponse = await getTwitterClient("api").post("statuses/update", {
+    status:
+      d3.timeFormat("%d.%m.%Y")(new Date()) +
+      " #COVID19 situation in #Austria. https://github.com/chjdev/cotwit19",
+    /* eslint-disable @typescript-eslint/camelcase */
+    media_ids: mediaUploadResponse.media_id_string,
+    /* eslint-enable @typescript-eslint/camelcase */
+  });
+  return tweetResponse.id;
+};
+
+/**
+ * Fetch data, render a png, tweet it and write it to disk
  */
 const main = async () => {
   await setLocale();
   const data = await fetchData();
   const png = await draw(data);
-  fs.writeFileSync("test.png", png);
+  const tweetId = await tweet(png);
+  fs.writeFileSync(tweetId + ".png", png);
 };
 
 main();
