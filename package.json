@@ -39,7 +39,7 @@
     "compile:watch": "tsc -w",
     "build": "npm-run-all lint compile",
     "build:watch": "npm-run-all -p lint:watch compile:watch bundle:watch",
-    "run": "node .",
+    "run": "./run.sh",
     "start": "npm-run-all build run"
   }
 }
