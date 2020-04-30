@@ -265,7 +265,6 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
   const fullCircle = 2 * Math.PI;
 
   const x = d3.scaleTime().range([0, fullCircle]);
-  // const y = scaleRadial(innerRadius, outerRadius);
   const y = scaleRadial(innerRadius, outerRadius);
 
   const dateExtent = d3.extent<[Date, number], Date>(cases, ([date]) => date);
