@@ -249,7 +249,6 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
     .attr("width", width + margin.left + margin.right)
     .attr("height", height + margin.top + margin.bottom)
     .style("background", "rgb(21, 32, 43)")
-    // .style("border-radius", "80px")
     .append("g")
     .attr("transform", "translate(" + margin.left + "," + margin.top + ")");
 
@@ -314,7 +313,11 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
   });
 
   const yAxis = g.append("g").attr("text-anchor", "middle");
-  const yTick = yAxis.selectAll("g").data(y.ticks(5)).enter().append("g");
+  const yTick = yAxis
+    .selectAll("g")
+    .data(y.ticks(5).concat([active[active.length - 1][1]]))
+    .enter()
+    .append("g");
 
   yTick
     .append("circle")
@@ -323,26 +326,19 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
     .attr("opacity", 1)
     .attr("r", y);
 
-  yAxis
-    .append("circle")
-    .attr("fill", "none")
-    .attr("stroke", "black")
-    .attr("opacity", 0.2)
-    .attr("r", () => y(y.domain()[0]));
-
   yTick
     .append("text")
     .attr("y", (d) => -y(d))
-    .attr("dy", (_, i) => (i === 0 ? "-0.725em" : "-0.1em"))
+    .attr("dy", "-0.25em")
+    .attr("dx", "5")
     .attr("fill", "white")
     .attr("stroke", "none")
-    .attr("transform", "translate(6)")
     .attr("text-anchor", "start")
     .style("font-size", "36px")
     .style("font-family", "sans-serif")
-    .text((d) => (d === 0 ? "0" : Math.round(d / 1000) + "k"));
+    .text((d) => (d === 0 ? "" : Math.round(d / 1000) + "k"));
 
-  const scaleFont = d3.scaleLinear().range([14, 32]).domain(y.domain());
+  const scaleFont = d3.scaleLinear().range([10, 26]).domain(y.domain());
   const scaleFontDy = d3.scaleLinear().range([6, 12]).domain(y.domain());
   g.append("g")
     .attr("class", "dates")
@@ -351,15 +347,27 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
     .enter()
     .append("text")
     .attr("class", "dataTicks")
-    .attr("text-anchor", "middle")
+    .attr("text-anchor", ([, cases]) =>
+      scaleFont(cases) > 18 ? "middle" : "start",
+    )
     .attr("fill", "white")
     .attr("stroke", "none")
-    .style("font-size", ([, cases]) => scaleFont(cases) + "px")
+    .style("font-size", ([, cases]) => Math.max(18, scaleFont(cases)) + "px")
     .style("font-family", "sans-serif")
     .text(([date]) => formatDate(date))
-    .attr("y", ([, cases]) => -y(cases))
-    .attr("dy", ([, cases]) => -scaleFontDy(cases) + "px")
-    .attr("transform", (_, i) => `rotate(${(i + 0.5) * (360 / numBars)})`);
+    //.attr("y", ([, cases]) => -y(cases))
+    .attr("dx", ([, cases]) => (scaleFont(cases) <= 18 ? 8 : 0))
+    .attr(
+      "dy",
+      ([, cases]) => (scaleFont(cases) > 18 ? -scaleFontDy(cases) : 6) + "px",
+    )
+    .attr(
+      "transform",
+      ([, cases], i) =>
+        `rotate(${(i + 0.5) * (360 / numBars)}) translate(0, ${-y(
+          cases,
+        )}) rotate(${scaleFont(cases) > 18 ? 0 : "-90"})`,
+    );
 
   const legend = g.append("g").attr("class", "legend");
   const square = 32;
@@ -371,7 +379,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
     idx === 0 ? "Active Cases" : idx === 1 ? "Total Recovered" : "Total Deaths",
     color,
   ]);
-  const opticalYPad = 65;
+  const opticalYPad = 70;
   const textY = -opticalYPad;
   legend.attr("transform", `translate(0, -${(textYPad + fontSize) / 2})`);
   legend
@@ -403,7 +411,7 @@ const draw = async ({ cases, recovered, deaths }: Data): Promise<PNG> => {
   g.append("text")
     .attr("x", 0)
     .attr("y", legends.length * (fontSize + textYPad))
-    .attr("dy", -20)
+    .attr("dy", -30)
     .attr("fill", "white")
     .attr("text-anchor", "middle")
     .style("font-size", "45px")
