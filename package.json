@@ -27,7 +27,7 @@
   "dependencies": {
     "convert-svg-to-png": "^0.5.0",
     "d3": "^5.15.1",
-    "jsdom": "^16.2.2",
+    "jsdom": "^16.5.0",
     "node-fetch": "^2.6.1",
     "twitter-lite": "^0.10.1-0",
     "yauzl": "^2.10.0"
